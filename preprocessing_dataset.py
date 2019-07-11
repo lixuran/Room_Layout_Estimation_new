@@ -102,14 +102,15 @@ class PanoCorBonDataset(data.Dataset):
                                                   cor[(i*2+2) % n_cor],
                                                   z=-50)
             xys = xys.astype(int)
-            bon[0, xys[:, 0]] = np.minimum(bon[0, xys[:, 0]], xys[:, 1])
+            #bon[0, xys[:, 0]] = np.minimum(bon[0, xys[:, 0]], xys[:, 1])
         for i in range(n_cor // 2):
             xys = panostretch.pano_connect_points(cor[i*2+1],
                                                   cor[(i*2+3) % n_cor],
                                                   z=50)
             xys = xys.astype(int)
-            bon[1, xys[:, 0]] = np.maximum(bon[1, xys[:, 0]], xys[:, 1])
+            #bon[1, xys[:, 0]] = np.maximum(bon[1, xys[:, 0]], xys[:, 1])
         bon = ((bon + 0.5) / img.shape[0] - 0.5) * np.pi
+       
         #print("boundary before {}".format(bon))
         #print("corner before {}".format(cor))
         # bon to relative height v
@@ -165,11 +166,14 @@ class PanoCorBonDataset(data.Dataset):
         
         # Convert all data to tensor
         x = torch.FloatTensor(img.transpose([2, 0, 1]).copy())
+        print(x.shape)
         bon = torch.FloatTensor(bon.copy())
         y_cor = torch.FloatTensor(y_cor.copy())
         #print("boundary final {}".format(bon))
         #print("corner final {}".format(y_cor))
+        
         # Check whether additional output are requested
+        #rnd_x rnd_y are in degrees 
         out_lst = [x, bon, y_cor,rnd_x,rnd_y]
         if self.return_cor:
             out_lst.append(cor)
@@ -222,7 +226,7 @@ def cor2xybound(cor):
 def visualize_a_data(x, y_bon, y_cor):
     x = (x.numpy().transpose([1, 2, 0]) * 255).astype(np.uint8)
     y_bon = y_bon.numpy()
-    y_bon = ((-y_bon / np.pi + 0.5) * x.shape[0]).round().astype(int)
+    y_bon = ((-y_bon / np.pi - 0.5) * x.shape[0]).round().astype(int)
     y_cor = y_cor.numpy()
 
     gt_cor = np.zeros((30, 1024, 3), np.uint8)
