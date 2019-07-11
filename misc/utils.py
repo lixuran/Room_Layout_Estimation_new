@@ -1,7 +1,47 @@
 import torch
 import torch.nn as nn
 from collections import OrderedDict
+import math 
+#import PIL
+def do(image):
+            # Get size before we rotate
+            x = image.size[0]
+            y = image.size[1]
 
+            # Rotate, while expanding the canvas size
+            image = image.rotate(rotation, expand=True, resample=Image.BICUBIC)
+
+            # Get size after rotation, which includes the empty space
+            X = image.size[0]
+            Y = image.size[1]
+
+            # Get our two angles needed for the calculation of the largest area
+            angle_a = abs(rotation)
+            angle_b = 90 - angle_a
+
+            # Python deals in radians so get our radians
+            angle_a_rad = math.radians(angle_a)
+            angle_b_rad = math.radians(angle_b)
+
+            # Calculate the sins
+            angle_a_sin = math.sin(angle_a_rad)
+            angle_b_sin = math.sin(angle_b_rad)
+
+            # Find the maximum area of the rectangle that could be cropped
+            E = (math.sin(angle_a_rad)) / (math.sin(angle_b_rad)) * \
+                (Y - X * (math.sin(angle_a_rad) / math.sin(angle_b_rad)))
+            E = E / 1 - (math.sin(angle_a_rad) ** 2 / math.sin(angle_b_rad) ** 2)
+            B = X - E
+            A = (math.sin(angle_a_rad) / math.sin(angle_b_rad)) * B
+
+            # Crop this area from the rotated image
+            # image = image.crop((E, A, X - E, Y - A))
+            image = image.crop((int(round(E)), int(round(A)), int(round(X - E)), int(round(Y - A))))
+
+            # Return the image, re-sized to the size of the image passed originally
+            return image.resize((x, y), resample=Image.BICUBIC)
+
+            
 
 def group_weight(module):
     # Group module parameters into two group

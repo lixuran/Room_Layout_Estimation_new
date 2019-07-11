@@ -1,18 +1,12 @@
-import numpy as np
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torchvision
 import torch.utils.model_zoo as model_zoo
 
 from DCN_local.modules.deform_conv import DeformConvPack
 from DCN_local.modules.modulated_deform_conv import ModulatedDeformConv
 
-model_urls = {
-    'resnet18': 'https://download.pytorch.org/models/resnet18-5c106cde.pth',
-    'resnet50': 'https://download.pytorch.org/models/resnet50-19c8e357.pth',
-    'resnet101': 'https://download.pytorch.org/models/resnet101-5d3b4d8f.pth',
-}
 
 def lr_pad(x, padding=1):
     return torch.cat([x[..., -padding:], x, x[..., :padding]], dim=3)
@@ -105,8 +99,6 @@ class Bottleneck(nn.Module):
 
 
 
-
-
 class EquiBottleneck(nn.Module):
     expansion = 4
 
@@ -175,7 +167,7 @@ class EquiBottleneck_semi(nn.Module):
 
         out = self.conv3(out)
         out = self.bn3(out)
-
+ 
         if self.downsample is not None:
             residual = self.downsample(x)
 
@@ -183,7 +175,8 @@ class EquiBottleneck_semi(nn.Module):
         out = self.relu(out)
 
         return out
-        
+
+
 class ResNet(nn.Module):
 
     def __init__(self, block, layers):
@@ -247,33 +240,10 @@ class ResNet(nn.Module):
 
 
 
-
-
-
-def resnet18(pretrained=True, **kwargs):
-    model = ResNet(BasicBlock, [2, 2, 2, 2], **kwargs)
-    if pretrained:
-        model.load_state_dict(model_zoo.load_url(model_urls['resnet18']), strict=False)
-    return model
-
-
 def resnet50(pretrained=True, **kwargs):
     model = ResNet(Bottleneck, [3, 4, 6, 3], **kwargs)
     if pretrained:
         model.load_state_dict(model_zoo.load_url(model_urls['resnet50']), strict=False)
-    return model
-
-
-def resnet101(pretrained=False, **kwargs):
-    model = ResNet(Bottleneck, [3, 4, 23, 3], **kwargs)
-    if pretrained:
-        model.load_state_dict(model_zoo.load_url(model_urls['resnet101']), strict=False)
-    return model
-
-def equiresnet101(pretrained=False, **kwargs):
-    model = ResNet(EquiBottleneck, [3, 4, 23, 3], **kwargs)
-    if pretrained:
-        model.load_state_dict(model_zoo.load_url(model_urls['resnet101']), strict=False)
     return model
     
 def equiresnet50(pretrained=False, **kwargs):
@@ -288,44 +258,13 @@ def semi_equiresnet50(pretrained=False, **kwargs):
         model.load_state_dict(model_zoo.load_url(model_urls['resnet50']), strict=False)
     return model
     
-    
-class GlobalHeightConv(nn.Module):
-    def __init__(self, in_c, out_c):
-        super(GlobalHeightConv, self).__init__()
-        self.layer = nn.Sequential(
-            LR_PAD(),
-            nn.Conv2d(in_c, in_c//2, kernel_size=3, stride=(2, 1), padding=(1, 0)),
-            nn.BatchNorm2d(in_c//2),
-            nn.ReLU(inplace=True),
-            LR_PAD(),
-            nn.Conv2d(in_c//2, in_c//2, kernel_size=3, stride=(2, 1), padding=(1, 0)),
-            nn.BatchNorm2d(in_c//2),
-            nn.ReLU(inplace=True),
-            LR_PAD(),
-            nn.Conv2d(in_c//2, in_c//4, kernel_size=3, stride=(2, 1), padding=(1, 0)),
-            nn.BatchNorm2d(in_c//4),
-            nn.ReLU(inplace=True),
-            LR_PAD(),
-            nn.Conv2d(in_c//4, out_c, kernel_size=3, stride=(2, 1), padding=(1, 0)),
-            nn.BatchNorm2d(out_c),
-            nn.ReLU(inplace=True),
-        )
+def conv3x3(in_planes, out_planes):
+    return nn.Sequential(
+        nn.Conv2d(in_planes, out_planes, kernel_size=3, padding=1),
+        nn.ReLU(inplace=True))
 
-    def forward(self, x, out_w):
-        x = self.layer(x)
-
-        assert out_w % x.shape[3] == 0
-        factor = out_w // x.shape[3]
-        x = torch.cat([x[..., -1:], x, x[..., :1]], 3)
-        x = F.interpolate(x, size=(x.shape[2], out_w + 2 * factor), mode='bilinear', align_corners=False)
-        x = x[..., factor:-factor]
-        return x
-
-
-class HorizonNet(nn.Module):
-    x_mean = torch.FloatTensor(np.array([0.485, 0.456, 0.406])[None, :, None, None])
-    x_std = torch.FloatTensor(np.array([0.229, 0.224, 0.225])[None, :, None, None])
-
+        
+class VAE(nn.Module):
     def __init__(self, backbone, use_rnn):
         super(HorizonNet, self).__init__()
         self.backbone = backbone
@@ -348,82 +287,50 @@ class HorizonNet(nn.Module):
               
         else:
             raise NotImplementedError()
+    def forward(self,x):
+        
+        
+class Decoder(nn.Module):
+    def __init__(self, skip_num=2, out_planes=3):
+        super(Decoder, self).__init__()
+        self.convs = nn.ModuleList([
+            conv3x3(2048, 1024),
+            conv3x3(1024 * skip_num, 512),
+            conv3x3(512 * skip_num, 256),
+            conv3x3(256 * skip_num, 128),
+            conv3x3(128 * skip_num, 64),
+            conv3x3(64 * skip_num, 32)])
+        self.last_conv = nn.Conv2d(
+            32 * skip_num, out_planes, kernel_size=3, padding=1)
 
-        _out_scale = 8
-        self.stage1 = nn.ModuleList([
-            GlobalHeightConv(64 * _exp, int(64 * _exp / _out_scale)),
-            GlobalHeightConv(128 * _exp, int(128 * _exp / _out_scale)),
-            GlobalHeightConv(256 * _exp, int(256 * _exp / _out_scale)),
-            GlobalHeightConv(512 * _exp, int(512 * _exp / _out_scale)),
-        ])
-        self.step_cols = 4
-        self.rnn_hidden_size = 512
-        if self.use_rnn:
-            self.bi_rnn = nn.LSTM(input_size=_exp * 256,
-                                  hidden_size=self.rnn_hidden_size,
-                                  num_layers=2,
-                                  dropout=0.5,
-                                  batch_first=False,
-                                  bidirectional=True)
-            self.drop_out = nn.Dropout(0.5)
-            self.linear = nn.Linear(in_features=2 * self.rnn_hidden_size,
-                                    out_features=3 * self.step_cols)
-            #self.linear.bias.data[0::4].fill_(-1)
-            #self.linear.bias.data[4::8].fill_(-0.478)
-            #self.linear.bias.data[8::12].fill_(0.425)
-        else:
-            self.linear = nn.Sequential(
-                nn.Linear(_exp * 256, self.rnn_hidden_size),
-                nn.ReLU(inplace=True),
-                nn.Dropout(0.5),
-                nn.Linear(self.rnn_hidden_size, 3 * self.step_cols),
-            )
-            #self.linear[-1].bias.data[0::4].fill_(-1)
-            #self.linear[-1].bias.data[4::8].fill_(-0.478)
-            #self.linear[-1].bias.data[8::12].fill_(0.425)
-        self.x_mean.requires_grad = False
-        self.x_std.requires_grad = False
+    def forward(self, f_list):
+        conv_out = []
+        f_last = f_list[0]
+        for conv, f in zip(self.convs, f_list[1:]):
+            f_last = F.interpolate(f_last, scale_factor=2, mode='nearest')
+            f_last = conv(f_last)
+            f_last = torch.cat([f_last, f], dim=1)
+            conv_out.append(f_last)
+        conv_out.append(self.last_conv(F.interpolate(
+            f_last, scale_factor=2, mode='nearest')))
+        return conv_out
 
-    def freeze_bn(self):
-        for m in self.feature_extractor.modules():
-            if isinstance(m, nn.BatchNorm2d):
-                m.eval()
 
-    def _prepare_x(self, x):
-        if self.x_mean.device != x.device:
-            self.x_mean = self.x_mean.to(x.device)
-            self.x_std = self.x_std.to(x.device)
-        return (x[:, :3] - self.x_mean) / self.x_std
+if __name__ == '__main__':
 
-    def forward(self, x):
-        x = self._prepare_x(x)
-        iw = x.shape[3]
-        block_w = int(iw / self.step_cols)
-        conv_list = self.feature_extractor(x)
-        down_list = []
-        for x, f in zip(conv_list, self.stage1):
-            tmp = f(x, block_w)  # [b, c, h, w]
-            flat = tmp.view(tmp.shape[0], -1, tmp.shape[3])  # [b, c*h, w]
-            down_list.append(flat)
-        feature = torch.cat(down_list, dim=1)  # [b, c*h, w]
+    encoder = Encoder()
+    edg_decoder = Decoder(skip_num=2, out_planes=3)
+    cor_decoder = Decoder(skip_num=3, out_planes=1)
 
-        # rnn
-        if self.use_rnn:
-            feature = feature.permute(2, 0, 1)  # [w, b, c*h]
-            output, hidden = self.bi_rnn(feature)  # [seq_len, b, num_directions * hidden_size]
-            output = self.drop_out(output)
-            output = self.linear(output)  # [seq_len, b, 3 * step_cols]
-            output = output.view(output.shape[0], output.shape[1], 3, self.step_cols)  # [seq_len, b, 3, step_cols]
-            output = output.permute(1, 2, 0, 3)  # [b, 3, seq_len, step_cols]
-            output = output.contiguous().view(output.shape[0], 3, -1)  # [b, 3, seq_len*step_cols]
-        else:
-            feature = feature.permute(0, 2, 1)  # [b, w, c*h]
-            output = self.linear(feature)  # [b, w, 3 * step_cols]
-            output = output.view(output.shape[0], output.shape[1], 3, self.step_cols)  # [b, w, 3, step_cols]
-            output = output.permute(0, 2, 1, 3)  # [b, 3, w, step_cols]
-            output = output.contiguous().view(output.shape[0], 3, -1)  # [b, 3, w*step_cols]
+    with torch.no_grad():
+        x = torch.rand(2, 6, 512, 1024)
+        en_list = encoder(x)
+        edg_de_list = edg_decoder(en_list[::-1])
+        cor_de_list = cor_decoder(en_list[-1:] + edg_de_list[:-1])
 
-        cor = output[:, :1]
-        bon = output[:, 1:]
-
-        return bon, cor
+    for f in en_list:
+        print('encoder', f.size())
+    for f in edg_de_list:
+        print('edg_decoder', f.size())
+    for f in cor_de_list:
+        print('cor_decoder', f.size())

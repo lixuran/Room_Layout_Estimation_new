@@ -11,7 +11,8 @@ from torch import optim
 from torch.utils.data import DataLoader
 
 from model import HorizonNet
-from dataset import PanoCorBonDataset
+#from dataset import PanoCorBonDataset
+from preprocessing_dataset import PanoCorBonDataset
 from misc.utils import group_weight, adjust_learning_rate, save_model, load_trained_model
 
 
@@ -28,7 +29,6 @@ def feed_forward(net, x, y_bon, y_cor):
 
     return losses
 
-
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -43,7 +43,7 @@ if __name__ == '__main__':
                              '(finetuning)')
     # Model related
     parser.add_argument('--backbone', default='resnet50',
-                        choices=['resnet18', 'resnet50', 'resnet101'],
+                        choices=['resnet18', 'resnet50', 'resnet101','equiresnet50','semi_equiresnet50'],
                         help='backbone of the network')
     parser.add_argument('--no_rnn', action='store_true',
                         help='whether to remove rnn or not')
@@ -94,8 +94,20 @@ if __name__ == '__main__':
                         help='manual seed')
     parser.add_argument('--disp_iter', type=int, default=1,
                         help='iterations frequency to display')
-    parser.add_argument('--save_every', type=int, default=25,
+    parser.add_argument('--save_every', type=int, default=20,
                         help='epochs frequency to save state_dict')
+    parser.add_argument('--max_x_rotate', default=0,
+                        help='maximum degree of y axis rotation')
+    parser.add_argument('--min_x_rotate',  default=0,
+                        help='minimum degree of y axis rotation')
+    parser.add_argument('--max_y_rotate',  default=0,
+                        help='maximum degree of z axis rotation')
+    parser.add_argument('--min_y_rotate',  default=0,
+                        help='minimum degree of z axis rotation')
+    parser.add_argument('--y_rotate_prob',  default=1,
+                        help='probability of z axis rotation')
+    parser.add_argument('--x_rotate_prob',  default=1,
+                        help='probability of y axis rotation')  
     args = parser.parse_args()
     device = torch.device('cpu' if args.no_cuda else 'cuda')
     np.random.seed(args.seed)
@@ -106,7 +118,9 @@ if __name__ == '__main__':
     dataset_train = PanoCorBonDataset(
         root_dir=args.train_root_dir,
         flip=not args.no_flip, rotate=not args.no_rotate, gamma=not args.no_gamma,
-        stretch=not args.no_pano_stretch)
+        stretch=not args.no_pano_stretch,
+        max_x_rotate=float(args.max_x_rotate),max_y_rotate=float(args.max_y_rotate),min_x_rotate=float(args.min_x_rotate),min_y_rotate=float(args.min_y_rotate),
+        x_rotate_prob=float(args.x_rotate_prob),y_rotate_prob=float(args.y_rotate_prob))
     loader_train = DataLoader(dataset_train, args.batch_size_train,
                               shuffle=True, drop_last=True,
                               num_workers=args.num_workers,
@@ -116,7 +130,9 @@ if __name__ == '__main__':
         dataset_valid = PanoCorBonDataset(
             root_dir=args.valid_root_dir,
             flip=False, rotate=False, gamma=False,
-            stretch=False)
+            stretch=False,
+            max_x_rotate=float(args.max_x_rotate)/2,max_y_rotate=float(args.max_y_rotate)/2,min_x_rotate=float(args.min_x_rotate)/2,min_y_rotate=float(args.min_y_rotate)/2,
+            x_rotate_prob=float(args.x_rotate_prob)/2,y_rotate_prob=float(args.y_rotate_prob)/2)
         loader_valid = DataLoader(dataset_valid, args.batch_size_valid,
                                   shuffle=False, drop_last=False,
                                   num_workers=args.num_workers,
@@ -145,7 +161,7 @@ if __name__ == '__main__':
     # Create tensorboard for monitoring training
     tb_path = os.path.join(args.logs, args.id)
     os.makedirs(tb_path, exist_ok=True)
-    tb_writer = SummaryWriter(log_dir=tb_path)
+    tb_writer = SummaryWriter(logdir=tb_path)
 
     # Init variable
     args.warmup_iters = args.warmup_epochs * len(loader_train)
@@ -168,7 +184,7 @@ if __name__ == '__main__':
             adjust_learning_rate(optimizer, args)
 
             args.cur_iter += 1
-            x, y_bon, y_cor = next(iterator_train)
+            x, y_bon, y_cor,rnd_x,rnd_z = next(iterator_train)
 
             losses = feed_forward(net, x, y_bon, y_cor)
             for k, v in losses.items():
@@ -186,12 +202,13 @@ if __name__ == '__main__':
         # Valid phase
         net.eval()
         if args.valid_root_dir:
+          with torch.no_grad():
             iterator_valid = iter(loader_valid)
             valid_loss = {}
             valid_num = 0
             for _ in trange(len(loader_valid),
                             desc='Valid ep%d' % ith_epoch, position=2):
-                x, y_bon, y_cor = next(iterator_valid)
+                x, y_bon, y_cor,rnd_x,rnd_z = next(iterator_valid)
                 with torch.no_grad():
                     losses = feed_forward(net, x, y_bon, y_cor)
                 for k, v in losses.items():

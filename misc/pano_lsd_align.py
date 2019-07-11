@@ -13,7 +13,7 @@ import sys
 import numpy as np
 from scipy.ndimage import map_coordinates
 import cv2
-
+import math
 
 def computeUVN(n, in_, planeID):
     '''
@@ -169,7 +169,39 @@ def rotatePanorama(img, vp=None, R=None):
 
     return rotImg
 
-
+#helper functions for rotating img and ground truth corners with respect to degree and axis from central view point
+# axis = 1 stands for rotate around x =2 rotate around z =3 rotate around y (dont ask me why I choose this I am noob too)
+def rotatePanorama_degree(img, degree=0,axis=0):
+    sin = math.sin(degree/float(360))
+    cos = math.cos(degree/float(360))
+    if(axis==1):
+        R= np.matrix([[1,0,0],[0,cos,-sin],[0,sin,cos]])
+    elif(axis==2):
+        R= np.matrix([[cos,0,sin],[0,1,0],[-sin,0,cos]])
+    elif(axis==3):
+        R= np.matrix([[cos,-sin,0],[sin,cos,0],[0,0,1]])
+    else:
+        raise NotImplementedError
+    return rotatePanorama(img,R=R)
+    
+def rotateCorners(cor,degree=0,axis=0):
+    print("corner shape : {}".format(cor.shape))
+    sin = math.sin(degree/float(360))
+    cos = math.cos(degree/float(360))
+    if(axis==1):
+        R= np.matrix([[1,0,0],[0,cos,-sin],[0,sin,cos]])
+    elif(axis==2):
+        R= np.matrix([[cos,0,sin],[0,1,0],[-sin,0,cos]])
+    elif(axis==3):
+        R= np.matrix([[cos,-sin,0],[sin,cos,0],[0,0,1]])
+    else:
+        raise NotImplementedError
+    new_cor = [ rotatePoints(i,R)  for i in cor]
+    return new_cor
+    
+def rotatePoints(p,R):
+    return np.transpose(R * np.transpose(p));
+    
 def imgLookAt(im, CENTERx, CENTERy, new_imgH, fov):
     sphereH = im.shape[0]
     sphereW = im.shape[1]

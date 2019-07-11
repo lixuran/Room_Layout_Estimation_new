@@ -2,7 +2,7 @@ import os
 import json
 import glob
 import argparse
-import numpy as np
+import numpy as np 
 from tqdm import tqdm
 from scipy.spatial import HalfspaceIntersection
 from scipy.spatial import ConvexHull
@@ -56,26 +56,29 @@ def eval_3diou(dt_floor_coor, dt_ceil_coor, gt_floor_coor, gt_ceil_coor, ch=-1.6
     assert (dt_floor_coor[:, 0] != dt_ceil_coor[:, 0]).sum() == 0
     assert (gt_floor_coor[:, 0] != gt_ceil_coor[:, 0]).sum() == 0
     N = len(dt_floor_coor)
-    dt_floor_xyz = np.hstack([
+    dt_floor_xyz = np.hstack([ 
         post_proc.np_coor2xy(dt_floor_coor, ch, coorW, coorH, floorW=1, floorH=1),
         np.zeros((N, 1)) + ch,
     ])
+    #print("the predicted ground floor is: ".format(dt_floor_xyz))
+    #print()
     gt_floor_xyz = np.hstack([
         post_proc.np_coor2xy(gt_floor_coor, ch, coorW, coorH, floorW=1, floorH=1),
         np.zeros((N, 1)) + ch,
     ])
+    #print("the true ground floor is: ".format(gt_floor_xyz))
     dt_c = np.sqrt((dt_floor_xyz[:, :2] ** 2).sum(1))
     gt_c = np.sqrt((gt_floor_xyz[:, :2] ** 2).sum(1))
     dt_v2 = post_proc.np_coory2v(dt_ceil_coor[:, 1], coorH)
     gt_v2 = post_proc.np_coory2v(gt_ceil_coor[:, 1], coorH)
     dt_ceil_z = dt_c * np.tan(dt_v2)
     gt_ceil_z = gt_c * np.tan(gt_v2)
-
+    #print(dt_ceil_z)
     dt_ceil_xyz = dt_floor_xyz.copy()
     dt_ceil_xyz[:, 2] = dt_ceil_z
     gt_ceil_xyz = gt_floor_xyz.copy()
     gt_ceil_xyz[:, 2] = gt_ceil_z
-
+    
     dt_halfspaces = xyzlst2halfspaces(dt_floor_xyz, dt_ceil_xyz)
     gt_halfspaces = xyzlst2halfspaces(gt_floor_xyz, gt_ceil_xyz)
 
@@ -85,8 +88,11 @@ def eval_3diou(dt_floor_coor, dt_ceil_coor, gt_floor_coor, gt_ceil_coor, ch=-1.6
     gt_halfspaces = HalfspaceIntersection(gt_halfspaces, np.zeros(3))
 
     in_volume = ConvexHull(in_halfspaces.intersections).volume
+    #print(in_volume)
     dt_volume = ConvexHull(dt_halfspaces.intersections).volume
+    #print(dt_volume)
     gt_volume = ConvexHull(gt_halfspaces.intersections).volume
+    #print(gt_volume)
     un_volume = dt_volume + gt_volume - in_volume
 
     return 100 * in_volume / un_volume
@@ -95,7 +101,7 @@ def eval_3diou(dt_floor_coor, dt_ceil_coor, gt_floor_coor, gt_ceil_coor, ch=-1.6
 def gen_reg_from_xy(xy, w):
     xy = xy[np.argsort(xy[:, 0])]
     return np.interp(np.arange(w), xy[:, 0], xy[:, 1], period=w)
-
+  
 
 def test(dt_cor_id, z0, z1, gt_cor_id, w, h, losses):
     # Eval corner error
@@ -139,7 +145,7 @@ def test(dt_cor_id, z0, z1, gt_cor_id, w, h, losses):
 
     # Eval 3d IoU
     iou3d = eval_3diou(dt_cor_id[1::2], dt_cor_id[0::2], gt_cor_id[1::2], gt_cor_id[0::2])
-
+    #print()
     losses['CE'].append(ce_loss)
     losses['PE'].append(pe_loss)
     losses['3DIoU'].append(iou3d)
@@ -186,15 +192,16 @@ if __name__ == '__main__':
     for gt_path, dt_path in tqdm(gtdt_pairs, desc='Testing'):
         with open(gt_path) as f:
             gt_cor_id = np.array([l.split() for l in f], np.float32)
-
+            #print(gt_cor_id)
         with open(dt_path) as f:
             dt = json.load(f)
         dt_cor_id = np.array(dt['uv'], np.float32)
         dt_cor_id[:, 0] *= args.w
         dt_cor_id[:, 1] *= args.h
-
+        #print(dt_cor_id)
+        #print()
         test(dt_cor_id, dt['z0'], dt['z1'], gt_cor_id, args.w, args.h, losses)
-
+    
     print(' Testing Result '.center(50, '='))
     print('Corner Error (%):', np.mean(losses['CE']))
     print('Pixel  Error (%):', np.mean(losses['PE']))
