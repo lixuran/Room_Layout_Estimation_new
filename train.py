@@ -101,11 +101,11 @@ if __name__ == '__main__':
     parser.add_argument('--min_x_rotate',  default=0,
                         help='minimum degree of y axis rotation')
     parser.add_argument('--max_y_rotate',  default=0,
-                        help='maximum degree of z axis rotation')
+                        help='maximum degree of y axis rotation')
     parser.add_argument('--min_y_rotate',  default=0,
-                        help='minimum degree of z axis rotation')
+                        help='minimum degree of y axis rotation')
     parser.add_argument('--y_rotate_prob',  default=1,
-                        help='probability of z axis rotation')
+                        help='probability of y axis rotation')
     parser.add_argument('--x_rotate_prob',  default=1,
                         help='probability of y axis rotation')  
     args = parser.parse_args()

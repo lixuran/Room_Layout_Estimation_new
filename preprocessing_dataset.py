@@ -102,13 +102,13 @@ class PanoCorBonDataset(data.Dataset):
                                                   cor[(i*2+2) % n_cor],
                                                   z=-50)
             xys = xys.astype(int)
-            #bon[0, xys[:, 0]] = np.minimum(bon[0, xys[:, 0]], xys[:, 1])
+            bon[0, xys[:, 0]] = np.minimum(bon[0, xys[:, 0]], xys[:, 1])
         for i in range(n_cor // 2):
             xys = panostretch.pano_connect_points(cor[i*2+1],
                                                   cor[(i*2+3) % n_cor],
                                                   z=50)
             xys = xys.astype(int)
-            #bon[1, xys[:, 0]] = np.maximum(bon[1, xys[:, 0]], xys[:, 1])
+            bon[1, xys[:, 0]] = np.maximum(bon[1, xys[:, 0]], xys[:, 1])
         bon = ((bon + 0.5) / img.shape[0] - 0.5) * np.pi
        
         #print("boundary before {}".format(bon))
@@ -139,14 +139,14 @@ class PanoCorBonDataset(data.Dataset):
             if(rnd> self.x_rotate_prob):
                 rnd_x = np.random.randint(self.min_x_rotate,self.max_x_rotate)
                 img=pano_lsd_align.rotatePanorama_degree(img,rnd_x,axis=1)
-                bon,cor = pano_lsd_align.rotateCorners(bon,cor,rnd_x,axis=1) #simple :> its not working :< 
+                #bon,cor = pano_lsd_align.rotateCorners(bon,cor,rnd_x,axis=1) #simple :> its not working :<      use -rnd_x instead of rnd_x here
         #random z rotate around y axis?
         if (self.max_y_rotate >0 and self.max_y_rotate >self.min_y_rotate) :
             rnd = np.random.uniform()
             if(rnd> self.y_rotate_prob):
                 rnd_y = np.random.randint(self.min_y_rotate,self.max_y_rotate)
                 img=pano_lsd_align.rotatePanorama_degree(img,rnd_y,axis=2)
-                bon,cor = pano_lsd_align.rotateCorners(bon,cor,rnd_y,axis=2) #simple :>
+                #bon,cor = pano_lsd_align.rotateCorners(bon,cor,rnd_y,axis=2) #simple :>  use -rnd_y instead of rnd_y here
         #print("boundary after {}".format(bon))
         #print("corner after {}".format(cor))        
         # Prepare 1d wall-wall probability
@@ -166,7 +166,7 @@ class PanoCorBonDataset(data.Dataset):
         
         # Convert all data to tensor
         x = torch.FloatTensor(img.transpose([2, 0, 1]).copy())
-        print(x.shape)
+        #print(x.shape)
         bon = torch.FloatTensor(bon.copy())
         y_cor = torch.FloatTensor(y_cor.copy())
         #print("boundary final {}".format(bon))
@@ -226,7 +226,7 @@ def cor2xybound(cor):
 def visualize_a_data(x, y_bon, y_cor):
     x = (x.numpy().transpose([1, 2, 0]) * 255).astype(np.uint8)
     y_bon = y_bon.numpy()
-    y_bon = ((-y_bon / np.pi - 0.5) * x.shape[0]).round().astype(int)
+    y_bon = ((y_bon / np.pi + 0.5) * x.shape[0]).round().astype(int)
     y_cor = y_cor.numpy()
 
     gt_cor = np.zeros((30, 1024, 3), np.uint8)
@@ -251,6 +251,25 @@ def visualize_a_data(x, y_bon, y_cor):
 
     return np.concatenate([gt_cor, img_pad, img_bon], 0)
 
+def visualize_a_data(x, y_bon, y_cor):
+    x = (x.numpy().transpose([1, 2, 0]) * 255).astype(np.uint8)
+    y_bon = y_bon.numpy()
+    y_bon = ((y_bon / np.pi + 0.5) * x.shape[0]).round().astype(int)
+    y_cor = y_cor.numpy()
+
+    gt_cor = np.zeros((30, 1024, 3), np.uint8)
+    gt_cor[:] = y_cor[0][None, :, None] * 255
+    img_pad = np.zeros((3, 1024, 3), np.uint8) + 255
+
+    img_bon = (x.copy() * 0.5).astype(np.uint8)
+    y1 = np.round(y_bon[0]).astype(int)
+    y2 = np.round(y_bon[1]).astype(int)
+    y1 = np.vstack([np.arange(1024), y1]).T.reshape(-1, 1, 2)
+    y2 = np.vstack([np.arange(1024), y2]).T.reshape(-1, 1, 2)
+    img_bon[y_bon[0], np.arange(len(y_bon[0])), 1] = 255
+    img_bon[y_bon[1], np.arange(len(y_bon[1])), 1] = 255
+
+    return np.concatenate([gt_cor, img_pad, img_bon], 0)
 
 
 if __name__ == '__main__':
