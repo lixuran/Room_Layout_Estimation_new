@@ -113,6 +113,31 @@ def pano_stretch(img, corners, kx, ky, order=1):
     return stretched_img, stretched_corners
 
 
+def pano_stretch_no_cor(img, kx, ky, order=1):
+    '''
+    img:     [H, W, C]
+    corners: [N, 2] in image coordinate (x, y) format
+    kx:      Stretching along front-back direction
+    ky:      Stretching along left-right direction
+    order:   Interpolation order. 0 for nearest-neighbor. 1 for bilinear.
+    '''
+
+    # Process image
+    sin_u, cos_u, tan_v = uv_tri(img.shape[1], img.shape[0])
+    u0 = np.arctan2(sin_u * kx / ky, cos_u)
+    v0 = np.arctan(tan_v * np.sin(u0) / sin_u * ky)
+
+    refx = (u0 / (2 * np.pi) + 0.5) * img.shape[1] - 0.5
+    refy = (v0 / np.pi + 0.5) * img.shape[0] - 0.5
+
+    # [TODO]: using opencv remap could probably speedup the process a little
+    stretched_img = np.stack([
+        map_coordinates(img[..., i], [refy, refx], order=order, mode='wrap')
+        for i in range(img.shape[-1])
+    ], axis=-1)
+
+    return stretched_img
+    
 def visualize_pano_stretch(stretched_img, stretched_cor, title):
     '''
     Helper function for visualizing the effect of pano_stretch
